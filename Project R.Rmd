@@ -1,0 +1,1149 @@
+---
+title: "Project R"
+author: "Juan Eduardo M , Sergi Salas, Sara G"
+date: "16/11/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(car)
+```
+
+
+## Load the data sets
+### 1. Upload the data sets and examine its contents.
+
+
+```{r}
+ds.installs<-read.csv("installs.csv")
+ds.players<-read.csv("playerss.csv")
+ds.tracking<-read.csv("tracking.csv")
+```
+
+## Preprocess
+
+### 2. Check whether there are errors, missing values or inconsistencies in the data sets. If so, correct them or delete the erroneous data.
+
+ - First of all, we delete all players that have an id that already exists. 
+```{r }
+
+#check duplicated id of players
+idx.duplicated <- which(duplicated(ds.players$id))
+idx.duplicated
+ds.players <- ds.players[-idx.duplicated, ]
+
+#Check
+sum(duplicated(ds.installs$idx.duplicated))
+```
+
+- Then, we delete all the players that didn't installed the game. 
+
+```{r}
+#get only the players that installed the game 
+id.install <- sort(ds.installs$userid )   
+players2 <- ds.players[id.install, ]
+ds.players <- players2
+```
+
+- Then, we delete all tracking rows where the time spent on the game are negative.
+
+```{r}
+#clean tracking users with <= time played
+idx <- which (ds.tracking$pt<0)
+ds.tracking <- ds.tracking[-idx,]
+
+```
+
+## Players’ behaviour 
+
+
+### 3. Let’s calculate the engagement of the players by using several ‘behavioural measures’. To do that, we need to calculate, for every user:
+
+
+####  1. Active days: the number of days from installation until the last day they were playing.
+  
+####  2. The average play time (session length).
+  
+####  3. The average amount of money spent by session.
+  
+####  4. LTV, the life time value of the user.
+  
+####  5. LTV weighted to the number of days that the user was active. 
+  
+
+Build a data frame with this information. Each row should contain the **ID of the user**, each of these features, and the version of the game that the user played. Show the first rows of the data frame to screen
+
+
+- 1. _Active days_: the number of days from installation until the last day they were playing. 
+  
+We create _"played_id"_ so as to have only the player who has played at least one time. 
+  
+```{r}
+
+played_id<- unique(sort(ds.tracking$userid))
+active_days<-data.frame(played_id)
+values_active_days<-c()
+
+for (id in played_id){
+  first_day<-ds.installs$day[which(ds.installs$userid==id)]
+  last_day<-max(ds.tracking$day[which(ds.tracking$userid==id)])
+  values_active_days<-append(values_active_days,last_day-first_day)
+}
+
+active_days<-data.frame(played_id,values_active_days)
+```
+  
+- 2. The average play time (session length).
+  
+```{r}
+#2. The average play time (session length).
+averages_play_time<-c()
+for(id in played_id){
+  average<-mean(ds.tracking$pt[ds.tracking$userid==id])
+  averages_play_time<-append(averages_play_time,average)
+}
+
+average_play_time<-data.frame(played_id,averages_play_time)
+```
+
+- 3. The average amount of money spent by session.
+  
+```{r}
+#3. The average amount of money spent by session.
+averages_play_time_monney<-c()
+for(id in played_id){
+  average<-mean(ds.tracking$spent[ds.tracking$userid==id])
+  averages_play_time_monney<-append(averages_play_time_monney,average)
+}
+
+average_monney_amount<-data.frame(played_id,averages_play_time_monney)
+average_monney_amount$averages_play_time_monney[is.na(average_monney_amount$averages_play_time_monney)]<-0
+sum(average_monney_amount$averages_play_time_monney==0)
+```
+ - This number represent the **users that never spent monney**. 
+
+
+- 4. LTV, the life time value of the user.
+
+```{r}
+#4. LTV, the life time value of the user.
+LVT<-average_monney_amount$averages_play_time_monney/average_play_time$averages_play_time
+user_LVT<-data.frame(played_id,LVT)
+```
+
+- 5. LTV weighted to the number of days that the user was active.
+  
+```{r}
+
+#5. LTV weighted to the number of days that the user was active.
+
+day_LVT<-average_monney_amount$averages_play_time_monney/active_days$values_active_days
+user_day_LVT<-data.frame(played_id,day_LVT)
+
+#Creation of the data frame
+ds.player_behaviour<-data.frame(played_id,values_active_days,averages_play_time,averages_play_time_monney,LVT,day_LVT)
+ds.player_behaviour[c(1:10),]
+
+```
+
+## 4 Descriptive statistics
+
+### 4.1 Player population
+Perform descriptive statistics on the whole player’s population. Use numeric measures (such as mean, median,
+variance, standard deviation) and visual plots. Print/plot the results in the document.
+
+Additionally, evaluate (and show) this information for every sample, by showing the size of each sample, and
+also the age and sex distribution of the two samples.
+To do the plots, you can use the regular plots embedded in R, such as box plot, histogram, or use fancier
+libraries such as _ggplot2_.
+
+
+- First of all, we perform descriptive statistics on the whole player's population. To do that, we have ti create several data frame :
+
+```{r  }
+
+# tables
+male_player<-ds.players$sex=="M"#Index of male players 
+female_player<-ds.players$sex=="F"#Index of female players 
+ds.fm<-ds.players[female_player,]#All female players 
+ds.m<-ds.players[male_player,]#All male players 
+ds.payusers <- ds.tracking[ds.tracking$spent>0,]#All players that have paid more than 0 euro
+
+#Sample A
+index_A_install<-ds.installs$userid[ds.installs$version=="A"]
+indexA<-which(is.element(ds.players$id,index_A_install))
+ds.sampleA<-ds.players[indexA,]
+
+#Sample B
+index_B_install<-ds.installs$userid[ds.installs$version=="B"]
+indexB<-which(is.element(ds.players$id,index_B_install))
+ds.sampleB<-ds.players[indexB,]
+
+#Tracking data for sample A and B
+ds.trackingA <- ds.tracking[is.element(ds.tracking$userid, ds.sampleA$id), ]
+ds.trackingB <- ds.tracking[is.element(ds.tracking$userid, ds.sampleB$id), ]
+```
+
+
+
+```{r}
+number_of_male<-sum(ds.players$sex=="M")
+number_of_female<-sum(ds.players$sex=="F")
+number_of_male
+number_of_female
+```
+* We can see that we have more Male than Female on the player population. Let's analyse the age now :
+
+
+```{r}
+
+# mean age
+  age_average <- mean(ds.players$age)
+# mean age male
+  age_M_average <- mean(ds.players$age[male_player])
+# mean age female
+  age_F_average <- mean(ds.players$age[female_player])
+  
+  data.frame(trunc(age_average),trunc(age_M_average),trunc(age_F_average))
+```
+
+#### Analyse : 
+
+When we look at the data, we can see that the three average are quite same. So, we can considerate that player age are the same in each sample.
+
+```{r}
+# mean time played
+  timePlayed_average<-mean(ds.tracking$pt)
+# mean time played male
+  timePlayed_M_average<-mean(ds.tracking$pt[is.element(ds.tracking$userid,ds.m$id)])
+# mean time played female
+  timePlayed_F_average<-mean(ds.tracking$pt[is.element(ds.tracking$userid,ds.fm$id)])
+  
+data.frame(timePlayed_average,timePlayed_M_average,timePlayed_F_average)
+```
+
+#### Analyse : 
+
+Same for the time spent average.
+
+
+```{r}
+# standard deviance time played
+  timePlayed_sd<-sd(ds.tracking$pt)
+# standard deviance time played male
+  timePlayed_M_sd<-sd(ds.tracking$pt[is.element(ds.tracking$userid,ds.m$id)])
+# standard deviance time played female
+  timePlayed_F_sd<-sd(ds.tracking$pt[is.element(ds.tracking$userid,ds.fm$id)])
+  
+data.frame(timePlayed_sd, timePlayed_M_sd,timePlayed_F_sd)
+
+```
+
+#### Analyse :
+
+The average and standard deviation show that the time spent by the male player and female player are similar. For that reason, we can considerate the sex as a confounding data with a low influence. 
+
+
+```{r}
+# median age
+  age_median <- median(ds.players$age)
+# median age male
+  age_M_median <- median(ds.players$age[male_player])
+# median age female
+  age_F_median <- median(ds.players$age[female_player])
+
+data.frame(age_median,age_M_median,age_F_median)
+```
+
+#### Analyse : 
+
+We can see that the 3 grup median are the same. 
+
+
+```{r}
+# median time played
+  timePlayed_median<-median(ds.tracking$pt)
+# median time played male
+  timePlayed_M_median<-median(ds.tracking$pt[is.element(ds.tracking$userid,ds.m$id)])
+# median time played female
+  timePlayed_F_median<-median(ds.tracking$pt[is.element(ds.tracking$userid,ds.fm$id)])
+  
+data.frame(timePlayed_median,timePlayed_M_median,timePlayed_F_median)
+```
+
+#### Analyse : 
+
+In spite of for the male group the median are higher, we can see that the median are quite same for the 3 groups. 
+
+
+```{r}
+
+# variance age
+  age_variance <- var(ds.players$age)
+# variance age male
+  age_M_variance <- var(ds.players$age[male_player])
+# variance age female
+  age_F_variance <- var(ds.players$age[female_player])
+  
+data.frame(age_variance, age_M_variance, age_F_variance)
+```
+
+#### Analyse :
+
+
+Variance on the three samples are almost the same. Before conclude, let's analyse the standard deviastion. 
+
+```{R}
+# standard deviance age
+  age_sd <- sd(ds.players$age)
+# standard deviance age male
+  age_M_sd <- sd(ds.players$age[male_player])
+# standard deviance age female
+  age_F_sd <- sd(ds.players$age[female_player])
+  
+data.frame(age_sd, age_M_sd,age_F_sd)
+```
+
+
+#### Analyse :
+
+The standard deviation and the average confirm that the age distribution on the player population are very similar in the three samples. 
+
+
+We will now do a light analysis of ARPU and ARPPU to get an idea of the monetization of the game. 
+
+
+```{r}
+ARPU<- sum(ds.tracking$spent)/length(ds.player_behaviour$played_id)
+ARPPU<- sum(ds.tracking$spent)/length(ds.player_behaviour$played_id[ds.player_behaviour$averages_play_time_monney>0])
+
+data.frame(ARPU,ARPPU)
+
+```
+
+
+
+#### Analyse :
+
+- **ARPU** : We earn 3,48 euro/player. We can consider this number quite important by comparing with other games like candy crush which have an ARPU of O,20$ according to the source: https://www.quora.com/What-is-the-ARPU-of-a-Candy-Crush-user .
+
+- **ARPPU** : We earn 165,82 euro/paying player that means that in average, the paying user spend 165,82 euros. We can also consider this number quite important.
+
+
+Now, we will see and analyse some plot and figure. 
+
+```{r}  
+pie(c(age_F_average,age_M_average),c("Female Age","Male Age"))
+```
+
+
+- Thanks to this circular diagram we can see that the **age of men and women is almost identical.**
+
+
+```{r}  
+pie(c(number_of_female,number_of_male),c("Female","Male"))
+```
+
+
+- Thanks to the pie, we can see that **male population are more important than women population.** 
+
+
+```{r}  
+barplot(c(mean(ds.tracking$pt[is.element(ds.tracking$userid,ds.m$id)]),mean(ds.tracking$pt[is.element(ds.tracking$userid,ds.fm$id)])))
+```
+
+
+- The first bar represent the average of the time spent by the _male_ and the second by the _female_.
+
+
+With this bar plot, we can see that **both number are almost the same**.
+
+
+```{r}
+length( ds.sampleA$id)
+length( ds.sampleB$id)
+```
+
+
+- The length of the samples are different. Indeed, the sample A length are less important than the sample B length. 
+
+
+```{r}
+pie( c(sum(ds.sampleA$sex=="M"),sum(ds.sampleA$sex=="F"),sum(ds.sampleB$sex=="M"),sum(ds.sampleB$sex=="F") ) , c("Male A","Female A","Male B","Female B") )
+
+
+```
+
+
+- Thanks to the pie, we can see that in both samples, the male population are more important than the women population. But, we can also see that **the distribution of men and women are similar.** 
+
+
+```{r}
+
+ggplot(ds.sampleA,aes(sex,age))+geom_boxplot()
+ggplot(ds.sampleB,aes(sex,age))+geom_boxplot()
+```
+
+
+- Thanks to these box plot,we can see that the **distribution of the age in both samples are the almost identical**.
+
+
+#### CONCLUSION :
+As a conclusion, we can say without a doubt that the **age and the sex** on our analyse are **confounding variables** with a **low influence**.
+
+
+### 4.2 Players’ behavior
+Add measures of descriptive statistics to the variables of players’ behavior calculated before. Also use plots
+and add them into the document.
+
+
+- First, we create two data frames, on data frame that represent player behavior for the sample A and the other for the sample B. 
+
+
+```{r}
+ds.player_behaviour_sampleA<-ds.player_behaviour[is.element(ds.player_behaviour$played_id,ds.sampleA$id),]
+
+ds.player_behaviour_sampleB<-ds.player_behaviour[is.element(ds.player_behaviour$played_id,ds.sampleB$id),]
+```
+
+```{r}
+#Value Active day - average
+value_active_day_average<-mean(ds.player_behaviour$values_active_days)
+
+value_active_day_average_sampleA<-mean(ds.player_behaviour_sampleA$values_active_days)
+
+value_active_day_average_sampleB<-mean(ds.player_behaviour_sampleB$values_active_days)
+
+data.frame(value_active_day_average,value_active_day_average_sampleA,value_active_day_average_sampleB)
+```
+
+```{r}
+#Value active day - standard deviation 
+value_active_day_sd<-sd(ds.player_behaviour$values_active_days)
+value_active_day_sd_sampleA<-sd(ds.player_behaviour_sampleA$values_active_days)
+value_active_day_sd_sampleB<-sd(ds.player_behaviour_sampleB$values_active_days)
+
+data.frame(value_active_day_sd,value_active_day_sd_sampleA,value_active_day_sd_sampleB)
+```
+#### Analyse :
+
+The _standard deviation_ and the _average_ for the sample A, B and all the population for the **value active day** show that for the three group seams to be **similar**. 
+
+- Let's analyse the average play time. 
+
+```{r}
+#average play time - average
+average_play_time_average<-mean(ds.player_behaviour$averages_play_time)
+
+average_play_time_average_sampleA<-mean(ds.player_behaviour_sampleA$averages_play_time)
+
+average_play_time_average_sampleB<-mean(ds.player_behaviour_sampleB$averages_play_time)
+
+data.frame(average_play_time_average,average_play_time_average_sampleA,average_play_time_average_sampleB)
+```
+
+```{r}
+#average play time- standard deviation 
+average_play_time_sd<-sd(ds.player_behaviour$averages_play_time)
+average_play_time_sd_sampleA<-sd(ds.player_behaviour_sampleA$averages_play_time)
+average_play_time_sd_sampleB<-sd(ds.player_behaviour_sampleB$averages_play_time)
+
+data.frame(average_play_time_sd,average_play_time_sd_sampleA,average_play_time_sd_sampleB)
+```
+
+The _standard deviation_ and the _average_ for the sample A, B and all the population for the **average play time** show that for the three group seams to be **similar**. 
+
+We cannot give a conclusion using these tools. 
+
+- Let's observe these data with plot.
+
+```{R}
+boxplot(ds.player_behaviour$values_active_days,ds.player_behaviour_sampleA$values_active_days,ds.player_behaviour_sampleB$values_active_days,main="Value active days box plot",ylab="Value active days")
+```
+
+Box plot 1 = population
+Box plot 2 = Sample A
+Box plot 3 = Sample B
+
+The _value active day box plot_ seams to be very similar. 
+We can anticipate the fact that the sample A have a value active day more important. 
+
+```{R}
+boxplot(ds.player_behaviour$averages_play_time,ds.player_behaviour_sampleA$averages_play_time,ds.player_behaviour_sampleB$averages_play_time,main="Box plot average play time",ylab="Value active day")
+```
+
+
+Box plot 1 = population
+Box plot 2 = Sample A
+Box plot 3 = Sample B
+
+
+Between the three box plot, we can have the impression that there is a difference of average play time. Nevertheless, it's complicated to make a decision. 
+We can anticipate the fact that sample A have a level of retention more important than the sample B. 
+
+- Let's make the same analysis for the amount spent by session. 
+
+```{r}
+sum(ds.player_behaviour_sampleA$averages_play_time_monney>0)
+sum(ds.player_behaviour_sampleB$averages_play_time_monney>0)
+sum(ds.player_behaviour$averages_play_time_monney>0)
+
+```
+
+- First, we can see that more than the half of session monetized are part from the sample B.
+```{r}
+ptm_sup0_A<-sum(!ds.player_behaviour_sampleA$averages_play_time_monney>0)
+ptm_sup0_B<-sum(!ds.player_behaviour_sampleB$averages_play_time_monney>0)
+ptm_sup0<-sum(!ds.player_behaviour$averages_play_time_monney>0)
+
+prop_ptm_sup0_A<-ptm_sup0_A/ptm_sup0
+prop_ptm_sup0_B<-ptm_sup0_B/ptm_sup0
+data.frame(ptm_sup0_A,ptm_sup0_B,ptm_sup0,prop_ptm_sup0_A,prop_ptm_sup0_B)
+pie(c(prop_ptm_sup0_A,prop_ptm_sup0_B),c("A","B"))
+```
+
+Nevertheless, there are more session no monetized in sample B quantitatively and qualitatively. Besides, there are more session in sample B. 
+
+- Knowing that, we will analyse only the session monetized. 
+
+```{r}
+#session money - average
+mean(ds.player_behaviour$averages_play_time_monney[ds.player_behaviour$averages_play_time_monney>0])
+mean(ds.player_behaviour_sampleA$averages_play_time_monney[ds.player_behaviour_sampleA$averages_play_time_monney>0])
+mean(ds.player_behaviour_sampleB$averages_play_time_monney[ds.player_behaviour_sampleB$averages_play_time_monney>0])
+```
+```{r}
+#session money - standard deviation
+sd(ds.player_behaviour$averages_play_time_monney[ds.player_behaviour$averages_play_time_monney>0])
+sd(ds.player_behaviour_sampleA$averages_play_time_monney[ds.player_behaviour_sampleA$averages_play_time_monney>0])
+sd(ds.player_behaviour_sampleB$averages_play_time_monney[ds.player_behaviour_sampleB$averages_play_time_monney>0])
+```
+
+#### Analyse :
+
+The _average and standard deviation_ are not strong evidences to say that version A or B are better for session monetization.
+
+
+```{r}
+barplot(sort(ds.player_behaviour$averages_play_time_monney[ds.player_behaviour$averages_play_time_monney>0]), main = "Population")
+
+barplot(sort(ds.player_behaviour_sampleA$averages_play_time_monney[ds.player_behaviour_sampleA$averages_play_time_monney>0]),main = "Sample A session monetization")
+
+barplot(sort(ds.player_behaviour_sampleB$averages_play_time_monney[ds.player_behaviour_sampleB$averages_play_time_monney>0]),main = "Sample B session monetization")
+```
+
+- Analyzing the bar plot, we can anticipate the fact that version A could be better for monetization.
+
+
+## 5 Test A/B
+
+Given the previous behavioral metrics that are computed for every player, can we say that version A of
+the game gets more engaged users than version B of the game with 95% confidence level?
+Follow a hypothesis testing procedure to answer this question, as indicated in the following steps.
+
+### 5.1 Research Questions
+
+Research question: 
+
+- Have version A of Game more engagement than B Version ?
+
+### 5.2 H0 and H1
+
+Null hypotheses: 
+
+ - H0: μA = μB
+ - H1: μA > μB
+
+Where μ, are the mean of samples A/B (x̄)
+
+### 5.3 Plots
+Compare graphically the behavioural metrics of the users of sample A and sample B. Show the plots.
+
+In this point we will compare _values_active_days_, and _values_active_days_ between the two samples, this two vars are the most representative and related to **engagement**
+
+Where boxplot 1, represents the _values_active_days_ in **Sample A**, and boxplot 2, represents _values_active_days_ in **Sample B**:
+
+```{r}
+
+boxplot(ds.player_behaviour_sampleA$values_active_days,ds.player_behaviour_sampleB$values_active_days,main="Value active days box plot",ylab="Value active days")
+
+
+```
+
+#### Analysis: 
+- Observing this plot, we can see that in mean, the group A is a little bit higher than in group B, beeing the minimum and maximum the same. This boxplot don't give us enough information to extract a solid conclusion. 
+
+
+Where boxplot 1, represents the _average_play_time_ in **Sample A**, and boxplot 2, represents _average_play_time_ in **Sample B**:
+
+```{r}
+
+boxplot(ds.player_behaviour_sampleA$averages_play_time,ds.player_behaviour_sampleB$averages_play_time,main="Average play Time plot",ylab="Average Play Time")
+
+
+
+```
+
+#### Analysis 
+- Observing this plot, we can see that in mean, the group A is also little bit higher than in group B, giving us a results similar to the first plot. 
+
+This time the minimum and maximum are not equals. In group B, we see more people that are out of stadistics. Also in group A, we have more players with higher results than B. This information is quite usefull, but not enough to extract solid conclusions.
+
+
+### 5.4 Method
+To perform hypothesis testing, explain which kind of test you will use and why.
+
+In this experiment, it is an A/B test, so, it is a **Two independents sample test**, with only **one tail** using the higher one, and how the size of sample it is big (N >30) we use _Normal Distribution_
+
+### 5.5 Compute
+Perform all the computations: observed value, critical values and p-value.
+Important tip: If you use more than one behavioral variable to answer this question, don’t repeat the
+compuations every time. Implement a function that does all the computations and call this function with the
+appropriate variables (a given variable every call).
+
+
+To compute, first of all we need to extract this metrics from both samples: 
+
+ - x̄: Mean
+ - N: Size of sample
+ - S: Standard deviation
+ - LC: Level of confidence
+
+and latter compute **Zobserved**, the **critic values** and **pvalues**
+
+To study engagement, but i think the most efficient way is comparing the time played. For this process we will use the var from _ds.player_behaviour_sample_ (A/B) called __ which is the play time of each user. We will do this in both samples
+
+```{r}
+
+normal_distribution_analyse<-function(sampleA,sampleB){
+
+  ana<-t.test(sampleB,sampleA, alternative="less", conf.level = 0.95)
+  df_param<-ana$parameter
+  tcrit <-qt( 0.05, df=df_param,lower.tail = FALSE)
+  tobs<-ana$statistic
+  pvalue<-ana$p.value
+  return(data.frame(tcrit,tobs,pvalue))
+
+}
+
+#Value Active Day
+normal_distribution_analyse(ds.player_behaviour_sampleA$values_active_days, ds.player_behaviour_sampleB$values_active_days)
+
+#Average Play Time
+normal_distribution_analyse(ds.player_behaviour_sampleA$averages_play_time, ds.player_behaviour_sampleB$averages_play_time)
+
+
+
+```
+
+
+### 5.6 Reach your decision
+Based on the previous results, take the decision regarding whether H0/H1 can be accepted or rejected.
+Explain how you reach this decision.
+
+#### Analyse
+
+Here we have observed value < critical value and p value < 0.05. We can therefore reject the null hypothesis with a 95% confidence level with respect to the active day value.
+
+Here we have observed value < critical value and p value < 0.05. Therefore, we can reject the null hypothesis with 95% confidence level with respect to the mean of the playing time.
+
+### 5.7 Answer the research questions
+Conclude whether the test A/B provided any clue regarding which version of the game is better to get higher
+users’ engagement.
+
+#### Analyse
+
+With the analysis we have done with normal distribution we can conclude that retention is higher in version A than in version B at 95% confidence level.
+
+
+## 6 Segmentation of users
+
+Considering the different characteristics of a user: age, sex, and behavioural metrics, apply a clustering
+algorithm to see whether there are different types of players in the game. You don’t need to use two separate
+samples. Put all the users together in the same dataset and cluster the players according to their features.
+Show the results and explain whether some insights can be observed.
+
+
+
+Considering the previous results, we have chosen to analyze the value active day of the player behavior. We can rightly assume that age and gender will be negligible parameters.
+
+```{r}
+kmean_pt<- kmeans(ds.player_behaviour$values_active_days,centers = 3,nstart = 10)
+kmean_pt$betweenss/kmean_pt$totss*100
+```
+
+
+Doing a _k-means clustering_ with the column pt of the data frame tracking with 3 group, we have a between_SS / total_SS **ratio equal to 86,3%** which is high enough to be considered reliable.
+
+- Let's make the three group and analyse it.
+
+```{r}
+#Value active day group 
+grup1<-kmean_pt$cluster==1
+ds.player_behaviour_1 <- ds.player_behaviour[grup1,]
+length(ds.player_behaviour_1$played_id)/length(ds.player_behaviour$played_id)
+
+grup2<-kmean_pt$cluster==2
+ds.player_behaviour_2 <- ds.player_behaviour[grup2,]
+length(ds.player_behaviour_2$played_id)/length(ds.player_behaviour$played_id)
+
+grup3<-kmean_pt$cluster==3
+ds.player_behaviour_3 <- ds.player_behaviour[grup3,]
+length(ds.player_behaviour_3$played_id)/length(ds.player_behaviour$played_id)
+```
+
+We can see that the distribution between the 3 groups is quite identical. Nevertheless, group 1 appears more important in number than group 3 and group 3 appears more important in number than group 2. 
+
+Now let's analyze the properties of the players.
+
+```{r}
+#Player group
+player1_id<-ds.player_behaviour_1$played_id
+player2_id<-ds.player_behaviour_2$played_id
+player3_id<-ds.player_behaviour_3$played_id
+
+ds.players_1<-ds.players[is.element(ds.players$id,player1_id),]
+ds.players_2<-ds.players[is.element(ds.players$id,player2_id),]
+ds.players_3<-ds.players[is.element(ds.players$id,player3_id),]
+
+summary(ds.players_1$age)
+summary(ds.players_2$age)
+summary(ds.players_3$age)
+
+boxplot(ds.players_1$age, ds.players_2$age, ds.players_3$age, main="Age distribution", ylab="Group number", xlab="Age")
+```
+
+
+The age distribution in the 3 groups is, not surprisingly, almost 
+identical.
+
+
+```{r}
+pie(c(sum(ds.players_1$sex=="M"),sum(ds.players_1$sex=="F")),labels = c("Male group 1","Female group 1"),main = "Group 1")
+
+pie(c(sum(ds.players_2$sex=="M"),sum(ds.players_2$sex=="F")),labels = c("Male group 2","Female group 2"),main = "Group 2")
+  
+pie(c(sum(ds.players_3$sex=="M"),sum(ds.players_3$sex=="F")),labels = c("Male group 3","Female group 3"),main = "Group 3")
+
+pie(
+  c(
+    sum(ds.players_1$sex=="M"),
+    sum(ds.players_1$sex=="F"),
+    sum(ds.players_2$sex=="M"),
+    sum(ds.players_2$sex=="F"),
+    sum(ds.players_3$sex=="M"),
+    sum(ds.players_3$sex=="F")),
+  labels = c("Male group 1","Female group 1","Male group 2","Female group 2","Male group 3","Female group 3"),main = "All group")
+
+```
+
+
+We can see that in each group, the _distribution_ is roughly identical. We can observe differences between the three groups in the last graphs but they are not significant as the three groups are of different sizes. 
+
+
+Now, let's analyse the properties of these group.
+
+```{r}
+summary(ds.player_behaviour_1$values_active_days)
+summary(ds.player_behaviour_2$values_active_days)
+summary(ds.player_behaviour_3$values_active_days)
+
+
+boxplot(ds.player_behaviour_1$values_active_days,ds.player_behaviour_2$values_active_days,ds.player_behaviour_3$values_active_days ,main = "Value active day lenght group", ylab="Day", xlab="Group number")
+
+```
+
+#### Analyse
+
+In _average_, we have group2 > group1 > group 3.
+By analyzing the box plots, we can see that they do not overlap. We can therefore consider that we have three relatively different groups of value active day. 
+
+Let's analyze the distribution of the A and B versions in the different groups.
+
+
+```{r}
+
+
+#Install group
+ds.installs_1<-ds.installs[is.element(ds.installs$userid,player1_id),]
+ds.installs_2<-ds.installs[is.element(ds.installs$userid,player2_id),]
+ds.installs_3<-ds.installs[is.element(ds.installs$userid,player3_id),]
+repart_group_1<-c(sum(ds.installs_1$version=="A"),sum(ds.installs_1$version=="B"))
+
+repart_group_2<-c(sum(ds.installs_2$version=="A"),sum(ds.installs_2$version=="B"))
+
+repart_group_3<-c(sum(ds.installs_3$version=="A"),sum(ds.installs_3$version=="B"))
+
+pie(repart_group_1,labels = c("A","B"),main = "Goup 1")
+pie(repart_group_2,labels = c("A","B"),main = "Goup 2")
+pie(repart_group_3,labels = c("A","B"),main = "Goup 3")
+```
+
+By analyzing the graphs, we can see that the 3 session groups are predominantly Game B sessions in terms of proportions.
+
+#### Conclusion of first **k-mean** test:
+
+As a conclusion, The test shows that there are three different types of player regarding the value active day. One type of session with values between 0 days and 7 days, one between 8 days and 15 days and a last group with values between 16 and 29. 
+The distribution of the previously analyzed versions shows that version B is mostly represented in the three groups, which does not allow to say that players spend more time on the game depending on the installed version.
+
+
+## 7 Regression analysis
+### 7.1 Do more engaged players spend more?
+
+If the more engaged players spend more, we should have a linear relationship between the time time spend on the game and the monney spend.
+
+Considering the players that havent paid is no relevant. 
+
+First, we will make a visual evaluation of the linearity.
+
+
+```{r}
+
+reg1_x<-ds.player_behaviour$averages_play_time[ds.player_behaviour$averages_play_time_monney>0]
+
+reg1_y<-ds.player_behaviour$averages_play_time_monney[ds.player_behaviour$averages_play_time_monney>0]
+
+scatterplot(x=reg1_x, y=reg1_y, xlab="Time",ylab="Money spent" )
+```
+
+The solid line is the linear regression line.
+The dotted center line is the local lowess-type regression curve.
+
+
+We can say easily that visually, there are not relationship between the time spent and the money spent by the paying user. 
+Let's try to verify it with the linear coefficient. 
+
+
+```{r}
+lmreg1<-lm(reg1_y~reg1_x)
+
+summary(lmreg1)$r.squared
+```
+
+The linear regression coefficient show that there are not relationship between the two parameters. 
+
+As a conclusion, we can say for sure that **more engaged players don't spend more**. 
+
+### 7.#2 Are there other variables influencing the amount spent by the users?
+
+Logically, the parameter that can influence the _amount spent_ is the _user age_.
+
+
+```{r}
+reg2_x<-ds.players$age[is.element(ds.players$id,played_id)]
+reg2_x<-reg2_x[ds.player_behaviour$averages_play_time_monney>0]
+
+reg2_y<-ds.player_behaviour$averages_play_time[ds.player_behaviour$averages_play_time_monney>0]
+
+scatterplot(x=reg2_x, y=reg2_y, xlab="Age",ylab="Money spent" )
+```
+
+We can say easily that visually, there are not relationship between the age and the money spent by the paying user. 
+Let's try to verify it with the linear coefficient. 
+
+```{r}
+lmreg2<-lm(reg2_y~reg2_x)
+
+summary(lmreg2)$r.squared
+```
+
+The linear regression coefficient show that there are not relationship between the two parameters. 
+
+As a conclusion, we can say for sure that there **are no relationship between the age of the users and the money spent**. 
+
+
+## 8 Player Population Metrics
+### 8.1 DAU
+
+Considering the full population together (sample A and sample B), compute the number of _downloads per day_ and the _number of active users (DAU)_. Draw a plot that shows these two variables.
+
+
+So as to calculate the number of download for every day,
+```{r}
+
+days<-unique(ds.installs$day)
+downloads<-c()
+for(day in days){
+  download<-sum(ds.installs$day==day)
+  downloads<-append(downloads,download)
+}
+ds.download<-data.frame(days,downloads)
+plot(ds.download,type="l",col="black")
+```
+
+#### Analysis
+With this plot we can see that the **Downloads** are irregular, there are many peaks, but these types of results are common in the video game industry. 
+
+These peaks are promoted by marketing or similar, and on the other hand the download drops occur when you stop investing, or there is not so much focus on our product. 
+
+Even so, we observe that there are always downloads and we regularly have peaks, which implies new users.
+ 
+
+Then, so as to calculate the DAU, we have to,
+
+```{r}
+days<-unique(ds.tracking$day)
+DAUs<-c()
+for(day in days){
+  DAU<-sum(ds.tracking$day==day)
+  DAUs<-append(DAUs,DAU)
+}
+ds.DAU<-data.frame(days,DAUs)
+plot(ds.DAU,ylab="DAU",type="l",col="black")
+
+
+```
+
+#### Analysis
+With this graph we observe the _users that are active daily_. It is very useful and we can observe that in the long run, we have **a lot of active users^**.
+
+The shape is the right one, as it imitates a _parabola_, this is because we have new users, download peaks, but at the same time, **we are keeping the old players**, which is our goal. 
+
+If it were not so, we would be investing a lot of money in marketing, but we would not recover it, this is not our result.
+
+So with this graph I can conclude that **we have good user retention**.
+
+
+### 8.2 MAUU
+Compute _MAUU_ of the population of players.
+
+**MAUU** represent the number of player that played at _least one time during a month_.
+
+```{r}
+MAUU<-length(played_id)
+MAUU
+```
+
+### 8.3 DAU/MAUU
+
+Compute the _DAU/MAUU_ ratio and show it in a plot.
+
+```{r}
+ratio<-ds.DAU$DAUs/MAUU
+ds.ratioDAUMAUU<-data.frame(days,ratio)
+plot(ds.ratioDAUMAUU,ylab="DAU/MAUU")
+```
+
+
+#### Analysis
+Looking at this graph, we have a very **similar result to the DAU graph**, it is an upward curve, and it is a good indication of how our game is performing, which at the moment is positive. 
+
+We do not have enough information to see how it will work in the future, at the moment it is the beginning of a parabola, that is to say at the beginning it is much more inclined by the peak of users, and little by little it is decreasing its inclination, which its logical.
+
+At the moment it follows a tendency to increase and that has to be our objective for the game to work, until it eventually ends up dying.
+
+## 9 Monetisation Metrics
+### 9.1 Daily Revenue and Total Revenue
+
+Compute and plot the _revenue per day_.
+
+
+```{r}
+revenue_per_days<-c()
+for(day in days){
+  revenue_per_day<-sum(ds.tracking$spent[ds.tracking$day==day])
+  revenue_per_days<-append(revenue_per_days,revenue_per_day)
+}
+
+ds.revenue_per_day<-data.frame(days,revenue_per_days)
+plot(ds.revenue_per_day)
+```
+
+#### Analysis
+This plot shows the **increase in revenue per day**, which is progressively increasing. 
+
+I consider this to be positive and logical, since the more users, the more users will pay for currencies, proportionally. 
+
+So the **more users we get, the more money we get**. 
+
+Even so there are _high peaks_, and some _below the average_ or what we would consider "normal". 
+
+These **peaks**, the high ones may be due to "white whales" or users who put a lot of money in a timely manner and the low points to points where the game does not encourage the purchase, there are few offers, or external factors such as economic crises, etc..
+
+**These points would be worthy of study** as they may be an indication of things that are done well, or badly, and therefore we must learn from them.
+
+
+
+Compare the _total revenue_ with the two versions of the game.
+
+```{r}
+total_revenueA<-sum(ds.trackingA$spent)
+total_revenueB<-sum(ds.trackingB$spent)
+
+total_revenueA
+total_revenueB
+```
+
+**Compute the total revenue** of the game considering all the players.
+
+```{r}
+total_revenue<-sum(ds.tracking$spent)
+total_revenue
+```
+
+#### Analysis
+in total, in the first month we obtain **€21,225.24** as revenue. These are very high figures (depending on the cost of the project) but without having more information I can conclude that it is very positive, and if the development is maintained, and in-game purchases are promoted, we could obtain many benefits.
+
+I conclude that the project seems very promising and obtains a much higher revenue than the average of the sector. 
+
+
+### 9.2 Conversion Rate
+
+Compute the _conversion rate_ of the two versions of the game.
+
+The **conversion rate** represent the ratio between the number  of paying customers and the number of users that test or play the game.
+
+```{r}
+played_idA<-ds.sampleA$id[is.element(played_id,ds.sampleA$id)]
+
+numberOfPlayingCustomerA<-length(played_idA)
+numberOfPayingCustomerA<-length(unique(ds.trackingA$userid[ds.trackingA$spent>0]))
+
+conversion_rateA<-numberOfPayingCustomerA/numberOfPlayingCustomerA
+conversion_rateA
+
+played_idB<-ds.sampleB$id[is.element(played_id,ds.sampleB$id)]
+
+numberOfPlayingCustomerB<-length(played_idB)
+numberOfPayingCustomerB<-length(unique(ds.trackingB$userid[ds.trackingB$spent>0]))
+
+conversion_rateB<-numberOfPayingCustomerB/numberOfPlayingCustomerB
+conversion_rateB
+```
+
+#### Analysis
+We can say that by default the conversion rate is very low, but that it is **higher in group B than in group **A.
+
+
+### 9.3 ARPU and ARPPU
+
+Compute _ARPU_ and _ARPPU_ for the two version
+
+```{r}
+
+
+
+ds.payusersA <- ds.trackingA[ds.trackingA$spent > 0, ]
+ds.payusersB <- ds.trackingB[ds.trackingB$spent > 0, ]
+  
+ARPU_A<-sum(ds.trackingA$spent)/length(unique(ds.trackingA$userid))
+ARPU_B<-sum(ds.trackingB$spent)/length(unique(ds.trackingB$userid))
+
+ARPPU_A<-sum(ds.trackingA$spent)/length(unique(ds.trackingA$userid[ds.trackingA$spent>0]))
+
+ARPPU_B<-sum(ds.trackingB$spent)/length(unique(ds.trackingB$userid[ds.trackingA$spent>0]))
+
+ARPU_A
+ARPU_B
+ARPPU_A
+ARPPU_B
+  
+```
+#### Analysis
+
+We can say that the average revenue per user in version A and version B are similar, with version B being slightly higher by just a few tenths. 
+
+On the other hand, the average revenue per pay user is notably different, being 180,45€ in version A, compared to 39,94€ for version B. 
+
+This means that in group A, the people who pay, pay considerably more than in group B, so it should be studied why, if there is some kind of different feature that promotes the purchase, or it is related to a specific user, a white whale, or similar.
+
+
+### 9.4 LTV per user
+
+
+```{r}
+PU_of_player_behaviourA<-is.element(ds.player_behaviour_sampleA$played_id,ds.payusersA$userid)
+
+LVT_per_PUA<-ds.player_behaviour_sampleA$LVT[PU_of_player_behaviourA]
+
+PU_of_player_behaviourB<-is.element(ds.player_behaviour_sampleB$played_id,ds.payusersB$userid)
+
+LVT_per_PUB<-ds.player_behaviour_sampleB$LVT[PU_of_player_behaviourB]
+
+```
+
+Compare versions A and B of the game by comparing:
+
+• Distribution of LTV and LTV per PU (Paying Users) using a histogram
+
+```{r}
+
+hist(ds.player_behaviour_sampleA$LVT[ds.player_behaviour_sampleA$LVT>0],main="LVT sample A",xlab="LVT")
+
+hist(ds.player_behaviour_sampleB$LVT[ds.player_behaviour_sampleB$LVT>0],main="LVT sample B",xlab="LVT")
+
+hist(LVT_per_PUA,main="Histogram of LVT per PU sampla A",xlab = "LVT per PU")
+
+hist(LVT_per_PUB,main="Histogram of LVT per PU sampla B",xlab = "LVT per PU")
+
+```
+
+
+• Distribution of LTV (boxplot) and LTV for PU using a boxplot
+
+```{r}
+
+boxplot(ds.player_behaviour_sampleA$LVT,main="Boxplot sample A")
+
+boxplot(ds.player_behaviour_sampleB$LVT,main="Boxplot sample B")
+
+boxplot(LVT_per_PUA,main="Boxplot of LVT per PU sampla A")
+
+boxplot(LVT_per_PUB,main="Boxplot of LVT per PU sampla B")
+
+```
+
+#### Analysis
+
+
+Compute also the average LTV of paying and non paying users for version A and version B of the game.
+
+- Average LVT of sample A
+
+```{r}
+mean(ds.player_behaviour_sampleA$LVT)
+```
+
+- Average LVT of sample B
+
+```{r}
+mean(ds.player_behaviour_sampleB$LVT)
+```
+
+- Average LVT per PU of sample A
+
+```{r}
+mean(LVT_per_PUA)
+```
+
+- Average LVT per PU of sample B
+
+```{r}
+mean(LVT_per_PUB)
+```
+
+## 10 Conclusion
+
+Observing all the data collected from our study, we can conclude that **version A is notably better than version B**. 
+
+To reach this conclusion we have taken into account the variables of _retention_ (point 5) and _ARPU or ARPPU_ (point 9).
+
+Both metrics are superior in version A, for example retention, one of the most important metrics to evaluate the viability of a project, as well as ARPPU, the amount of money invested by paying users, being very high in version A. 
+
+With this, we see that whatever the **feature that A has, it is much more profitable and efficient to attract users, keep them in the application and / or encourage them to buy**. 
+
+In addition, looking at the results of point 8 (downloads, DAU and DAU/MAUU) we see that **our game (version A or B) works very well and keeps many users (retention) so it is profitable to invest in attracting more customers** and users interested in our product as it will increase our profits and therefore our profit in the medium / long term.
+
+We also note that the **LVT** is very high, related to the previous variables, however the conversion rate is not very high and could be better, to improve the final profit, ARPPU, etc..
+
+It is also important to point out that in our study age and **sex are variables with no relevance**, i.e. they interfere in a negative way, even _generating biases_. We therefore consider them to be confounding variables. 
+
+
+                                                THE END 
